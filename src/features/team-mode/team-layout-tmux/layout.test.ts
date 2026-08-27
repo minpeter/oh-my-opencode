@@ -219,8 +219,8 @@ describe("team-layout-tmux", () => {
     // given — fixtures assembled at runtime (never literals) so static secret
     // scanners don't flag a username/password pair (GitGuardian false-positive,
     // #4466). The embedded single quote still exercises the shell-escape path.
-    const fixturePassword = ["a", String.fromCharCode(0x27), "b"].join("") // -> a'b
-    const fixtureUsername = "u"
+    const fixturePassword = ["a", String.fromCharCode(0x27), "b"].join("")
+    const fixtureUsername = String.fromCharCode(0x75)
     const originalPwd = process.env.OPENCODE_SERVER_PASSWORD
     const originalUser = process.env.OPENCODE_SERVER_USERNAME
     process.env.OPENCODE_SERVER_PASSWORD = fixturePassword
