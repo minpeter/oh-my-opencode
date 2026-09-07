@@ -1,6 +1,7 @@
 import { posix, win32 } from "node:path"
 
 import {
+  resolveOmoConfigNamespace,
   runMigrations,
   type MigrationBoundary,
   type MigrationClock,
@@ -63,6 +64,9 @@ function migratedSources(results: readonly MigrationRunResult[]): readonly strin
 
 /** Runs the shared, lock-protected migration engine before Senpi reads its unified configuration. */
 export function runSenpiStartupMigration(options: SenpiStartupMigrationOptions): SenpiStartupMigrationResult {
+  if (resolveOmoConfigNamespace(options.environment ?? process.env) !== ".omo") {
+    return { journalResumed: false, migratedFrom: [], results: [] }
+  }
   const homeDir = homeDirectory(options)
   if (homeDir.length === 0) {
     return {

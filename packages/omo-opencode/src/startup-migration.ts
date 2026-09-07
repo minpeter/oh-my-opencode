@@ -1,6 +1,7 @@
 import { posix } from "node:path"
 
 import {
+  resolveOmoConfigNamespace,
   runMigrations,
   type MigrationBoundary,
   type MigrationClock,
@@ -60,6 +61,9 @@ function skippedConflictCount(results: readonly MigrationRunResult[]): number {
 export function runOpenCodeStartupMigration(
   options: OpenCodeStartupMigrationOptions,
 ): OpenCodeStartupMigrationResult {
+  if (resolveOmoConfigNamespace(options.environment ?? process.env) !== ".omo") {
+    return { journalResumed: false, migratedFrom: [], reloadRequired: false, results: [], skippedConflictCount: 0 }
+  }
   const homeDir = homeDirectory(options)
   if (homeDir.length === 0) {
     return {

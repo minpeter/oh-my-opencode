@@ -46,7 +46,7 @@ function containingConfigDirectory(path: string, userConfigDirectory: string): s
 
   let currentPath = resolvedPath
   while (true) {
-    if (basename(currentPath) === ".omo") return currentPath
+    if (basename(currentPath) === basename(resolvedUserConfigDirectory)) return currentPath
     const parentPath = dirname(currentPath)
     if (parentPath === currentPath) return null
     currentPath = parentPath

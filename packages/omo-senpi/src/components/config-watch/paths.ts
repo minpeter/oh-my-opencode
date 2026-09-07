@@ -8,6 +8,7 @@ import {
   findProjectConfigPathsFarthestFirst,
   resolveHomeDir,
   resolveOmoConfigPaths,
+  resolveOmoConfigNamespace,
   resolveUserOmoConfigDirectory,
   type OmoConfigEnv,
 } from "@oh-my-opencode/omo-config-core"
@@ -141,8 +142,8 @@ function configTarget(path: string): OmoConfigWatchTarget {
   return { path, kind: "dir", filterGlobs: [...OMO_CONFIG_FILE_FILTER_GLOBS] }
 }
 
-function creationTarget(path: string): OmoConfigWatchTarget {
-  return { path, kind: "dir", filterGlobs: [...OMO_CONFIG_DIRECTORY_FILTER_GLOBS] }
+function creationTarget(path: string, namespace: string): OmoConfigWatchTarget {
+  return { path, kind: "dir", filterGlobs: [`/${namespace}`, `/${namespace}/omo.jsonc`, `/${namespace}/omo.json`] }
 }
 
 function userConfigCreationTarget(path: string, userConfigDirectory: string): OmoConfigWatchTarget {
@@ -168,6 +169,7 @@ export function resolveOmoConfigWatchTargetResolution(
   options: ResolveOmoConfigWatchTargetsOptions,
 ): OmoConfigWatchTargetResolution {
   const env = options.env ?? process.env
+  const namespace = resolveOmoConfigNamespace(env)
   const platform = options.platform ?? process.platform
   const resolveFileSystemType = options.resolveFileSystemType ?? createDefaultFileSystemTypeResolver(platform)
   const isOnPlan9FileSystem = (path: string): boolean => resolveFileSystemType(path) === PLAN9_FILE_SYSTEM_TYPE
@@ -182,6 +184,8 @@ export function resolveOmoConfigWatchTargetResolution(
       options.cwd,
       resolveHomeDir(env),
       DEFAULT_READ_FILE_SYSTEM,
+      resolveHomeDir(env),
+      namespace,
     ).map((path) => dirname(path)),
   ])
   const targets: OmoConfigWatchTarget[] = []
@@ -199,13 +203,13 @@ export function resolveOmoConfigWatchTargetResolution(
   // project config and creation target without probing potentially slow paths.
   if (!isOnPlan9FileSystem(resolve(options.cwd))) {
     for (const ancestorDirectory of ancestorDirectories) {
-      const omoDirectory = join(ancestorDirectory, ".omo")
+      const omoDirectory = join(ancestorDirectory, namespace)
       if (configuredProjectDirectories.has(omoDirectory) || isExistingNonSymlinkDirectory(omoDirectory)) {
         targets.push(configTarget(omoDirectory))
       }
     }
 
-    for (const ancestorDirectory of ancestorDirectories) targets.push(creationTarget(ancestorDirectory))
+    for (const ancestorDirectory of ancestorDirectories) targets.push(creationTarget(ancestorDirectory, namespace))
   }
 
   const senpiProtectedPaths = resolveSenpiProtectedPaths(env)
