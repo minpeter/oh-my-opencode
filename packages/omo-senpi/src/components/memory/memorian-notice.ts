@@ -102,8 +102,8 @@ export const renderMemorianGateEntry: EntryRenderer<MemorianGateRecord> = (entry
     title: joinFields([`Memorian gate ${record.status === "skipped" ? "skipped" : "failed"}`, cause]),
     tone: record.status === "skipped" ? "warning" : "error",
     why: record.status === "skipped"
-      ? "Memorian could not judge the stored memories for the previous turn."
-      : "Memorian failed while judging the stored memories for the previous turn.",
+      ? "Memorian could not judge the recalled memory candidates for the previous turn."
+      : "Memorian failed while judging the recalled memory candidates for the previous turn.",
     ...(extra.length === 0 ? {} : { extra }),
   }, options, theme)
 }

@@ -13,9 +13,10 @@
 // transcript window - so the child needs no file access and no read tool; its single output is the
 // nudge closure, which validates against the launch input synchronously and records accepted
 // nudges into an array this runner owns. The run directory holds the same payload as
-// human-auditable artifacts and is KEPT after the run (pruning is a deliberate non-goal).
+// human-auditable artifacts; outcome.json is persisted and aged run dirs are pruned.
 
 import { randomUUID } from "node:crypto"
+import { join } from "node:path"
 
 import {
   validateNudges,
@@ -37,6 +38,7 @@ import { resolveReflectionModel } from "./worker/resolve-model"
 import { normalizeGateReason } from "./memorian-judge-outcome"
 import { runMemorianJudge } from "./memorian-judge-run"
 import { abortAndDispose } from "./memorian-lifecycle"
+import { writeMemorianRunOutcome } from "./memorian-run-retention"
 
 const QUICK_CATEGORY = "quick"
 /** The gate advises a turn that already ended; anything slower than this is worthless. */
@@ -83,7 +85,7 @@ export interface MemorianGateLaunchInput {
 }
 
 /** Precise failure causes: which stage of the in-process launch died. */
-export type MemorianGateFailureCause = "session_create_failed" | "deadline" | "child_failed" | "launch_failed"
+export type MemorianGateFailureCause = "session_create_failed" | "child_failed" | "child_failed_upstream" | "launch_failed"
 
 export type MemorianGateLaunchResult =
   /** Another gate run holds the latch; this trigger is dropped. */
@@ -92,7 +94,7 @@ export type MemorianGateLaunchResult =
   | { readonly status: "skipped"; readonly cause?: string; readonly model?: string; readonly candidateCount?: number; readonly runId?: string }
   /** The child ran and said nothing the parent accepted. */
   | { readonly status: "empty"; readonly runId?: string }
-  /** The child session could not be created, outran its deadline, or its turn failed. */
+  /** The child session could not be created or its turn failed. */
   | {
     readonly status: "failed"
     readonly cause?: MemorianGateFailureCause
@@ -101,8 +103,9 @@ export type MemorianGateLaunchResult =
     readonly reason?: string
     readonly runId?: string
   }
+  /** Dropped causes include cancelled, compaction, and deadline (zero accepted nudges). */
   | { readonly status: "dropped"; readonly cause?: string; readonly model?: string; readonly candidateCount?: number; readonly runId?: string }
-  | { readonly status: "nudged"; readonly nudges: readonly RecallNudge[]; readonly model?: string; readonly runId: string }
+  | { readonly status: "nudged"; readonly nudges: readonly RecallNudge[]; readonly model?: string; readonly runId: string; readonly partial?: boolean }
 
 export type MemorianGateLaunchState = { cancelled: boolean }
 
@@ -174,7 +177,10 @@ export class MemorianGateRunner {
       set state(value) { self.activeState = value },
     }, input, resolution, runId, accepted, state)
     if (judged.status === "failed" || judged.status === "dropped") return judged
-    if (state.cancelled) return { status: "dropped", cause: "cancelled", runId, candidateCount: input.candidates.length }
+    if (state.cancelled) {
+      await overwriteDroppedOutcome(this.options, runId, "cancelled")
+      return { status: "dropped", cause: "cancelled", runId, candidateCount: input.candidates.length }
+    }
     // Defence in depth: the closure already validated every recorded nudge at call time, and this
     // re-validation is a no-op for already-validated input (it also drops duplicate paths should
     // the judge repeat one after an accepted call).
@@ -185,10 +191,17 @@ export class MemorianGateRunner {
     })
     if (nudges.length === 0) return { status: "empty" }
     // The judged transcript no longer exists after a compaction; the verdict must not survive it.
-    if (state.cancelled || isStaleAfterCompaction(input)) return state.cancelled
-      ? { status: "dropped", cause: "cancelled", candidateCount: input.candidates.length }
-      : this.dropAfterCompaction(input)
-    return { status: "nudged", nudges, model: resolution.model, runId }
+    if (state.cancelled || isStaleAfterCompaction(input)) {
+      if (state.cancelled) {
+        await overwriteDroppedOutcome(this.options, runId, "cancelled")
+        return { status: "dropped", cause: "cancelled", candidateCount: input.candidates.length }
+      }
+      await overwriteDroppedOutcome(this.options, runId, "compaction")
+      return this.dropAfterCompaction(input)
+    }
+    return judged.partial === true
+      ? { status: "nudged", nudges, model: resolution.model, runId, partial: true }
+      : { status: "nudged", nudges, model: resolution.model, runId }
   }
 
   async cancel(): Promise<void> {
@@ -213,6 +226,22 @@ export class MemorianGateRunner {
     })
     return { status: "dropped", cause: "compaction", candidateCount: input.candidates.length }
   }
+}
+
+async function overwriteDroppedOutcome(
+  options: MemorianGateRunnerOptions,
+  runId: string,
+  cause: "cancelled" | "compaction",
+): Promise<void> {
+  await writeMemorianRunOutcome({
+    runDir: join(options.identityPaths.recall, "runs", runId),
+    runId,
+    status: "dropped",
+    cause,
+    nudged: [],
+    now: () => new Date(),
+    warn: (message, fields) => options.logger?.warn(message, fields),
+  })
 }
 
 function isStaleAfterCompaction(input: MemorianGateLaunchInput): boolean {

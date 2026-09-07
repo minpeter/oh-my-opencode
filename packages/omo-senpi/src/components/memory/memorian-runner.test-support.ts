@@ -9,7 +9,7 @@ import {
   type MemoryIdentityPaths,
   type RecallCandidate,
 } from "@oh-my-opencode/memory-core"
-import type { ChildHandle, ChildModelRegistry, ChildSession, ChildSessionListener, CreateChildSession } from "@oh-my-opencode/senpi-task"
+import type { ChildHandle, ChildModelRegistry, ChildSession, ChildSessionEvent, ChildSessionListener, CreateChildSession } from "@oh-my-opencode/senpi-task"
 
 import { ModelRegistry, ModelRuntime } from "../../senpi-test-runtime"
 import type { MemorianGateRunner } from "./memorian-runner"
@@ -66,14 +66,19 @@ interface ScriptedSession {
   whenPrompted(): Promise<void>
   /** Settle the open turn; safe to call before the turn starts (the request is deferred). */
   resolve(): void
+  /** Emit a session event to every subscriber exactly as a live session would. */
+  emit(event: ChildSessionEvent): void
 }
 
 /**
  * A fake in-process child session: prompt() runs the script against the session options the
  * runner assembled (custom tools, model, loader), so the script can drive real `nudge` tool calls.
- * The turn settles when the test resolves it; a never-resolved script pins the turn open.
+ * The turn settles when the test resolves it; a never-resolved script pins the turn open. The
+ * script's second argument emits session events mid-turn (a provider failure surfaces on the
+ * event stream while prompt() is still pending), and `emit` on the stub does the same from the
+ * test side.
  */
-export function scriptedSession(script: (options: CreateAgentSessionOptions) => Promise<void>): ScriptedSession {
+export function scriptedSession(script: (options: CreateAgentSessionOptions, emit: (event: ChildSessionEvent) => void) => Promise<void>): ScriptedSession {
   let captured: CreateAgentSessionOptions | undefined
   let settle: (() => void) | undefined
   let resolveRequested = false
@@ -84,6 +89,9 @@ export function scriptedSession(script: (options: CreateAgentSessionOptions) => 
   const promptTexts: string[] = []
   const listeners = new Set<ChildSessionListener>()
   let created = 0
+  const emit = (event: ChildSessionEvent): void => {
+    for (const listener of listeners) listener(event)
+  }
   const session: ChildSession = {
     sessionId: "memorian-child-1",
     async prompt(text) {
@@ -91,7 +99,7 @@ export function scriptedSession(script: (options: CreateAgentSessionOptions) => 
       onPrompted?.()
       const options = captured
       if (options === undefined) throw new Error("session options were not captured")
-      await script(options)
+      await script(options, emit)
       for (const listener of listeners) {
         listener({ type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "nudge", arguments: {} }], stopReason: "toolUse" } })
         listener({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop" } })
@@ -121,6 +129,7 @@ export function scriptedSession(script: (options: CreateAgentSessionOptions) => 
       resolveRequested = true
       settle?.()
     },
+    emit,
     createSession: async (options) => {
       created += 1
       captured = options

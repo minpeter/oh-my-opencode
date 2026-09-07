@@ -1,4 +1,4 @@
-import type { RunnerOutcome } from "@oh-my-opencode/senpi-task"
+import type { ChildSessionEvent, RunnerOutcome } from "@oh-my-opencode/senpi-task"
 
 import { containsSecretLikeMaterial } from "@oh-my-opencode/memory-core"
 
@@ -16,6 +16,21 @@ export function classifyJudgeTurn(outcome: RunnerOutcome): JudgeTurnClassificati
   return reason === undefined
     ? { status: "failed", cause: "child_failed" }
     : { status: "failed", cause: "child_failed", reason }
+}
+
+/** Provider failures are emitted before a child turn settles while the provider retry loop runs. */
+export function classifyJudgeEvent(event: ChildSessionEvent): { readonly reason: string } | undefined {
+  if (event.type !== "message_end" || !isRecord(event.message)) return undefined
+  const stopReason = event.message["stopReason"]
+  const errorMessage = event.message["errorMessage"]
+  if ((stopReason !== "error" && stopReason !== "aborted") || typeof errorMessage !== "string") return undefined
+  return UPSTREAM_FAILURE_PATTERN.test(errorMessage) ? { reason: errorMessage } : undefined
+}
+
+const UPSTREAM_FAILURE_PATTERN = /\\b503\\b|auth[_ -]?unavailable|overloaded/iu
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
 
 export function normalizeGateReason(message: string | undefined): string | undefined {

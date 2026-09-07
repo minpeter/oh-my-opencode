@@ -25,6 +25,19 @@ describe("createMemorianGateWiring", () => {
     expect(entries[0]?.data).toEqual({ version: 1, status: "skipped", cause: "quick_unavailable", candidateCount: 0 })
   })
 
+  test("#given a dropped deadline outcome #when reported #then an omo-memorian:gate record is appended", () => {
+    const entries: Array<{ customType: string; data: unknown }> = []
+    const gate = createMemorianGateWiring({ resolveContext: () => context, runnerFor: () => ({ launch: async () => ({ status: "empty" }) }) })
+    gate.attachEntrySink((customType, data) => entries.push({ customType, data }))
+
+    gate.reportOutcome("session-1", { status: "dropped", cause: "deadline" }, collected)
+
+    expect(entries).toEqual([{
+      customType: "omo-memorian:gate",
+      data: { version: 1, status: "dropped", cause: "deadline", candidateCount: 0 },
+    }])
+  })
+
   test("#given a session epoch #when compaction is accepted #then the epoch increments and shutdown drains the runner", async () => {
     let cancelled = 0
     let idle = 0

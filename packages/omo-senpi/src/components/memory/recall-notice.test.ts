@@ -105,7 +105,7 @@ describe("renderMemorianGateEntry reason and runId", () => {
 
   test("#given a skipped gate record without reason #when rendered #then the output is byte-identical to before", () => {
     const component = renderMemorianGateEntry({ data: { version: 1, status: "skipped", cause: "quick_category_unavailable", candidateCount: 2 } } as never, { expanded: false }, PLAIN_THEME as never)
-    expect(JSON.stringify(component?.render(120))).toBe(JSON.stringify(["                                                                                                                        ", " \u001b[1m⚠ Memorian gate skipped · quick_category_unavailable\u001b[22m                                                                   ", " Memorian could not judge the stored memories for the previous turn.                                                    ", "                                                                                                                        "]))
+    expect(JSON.stringify(component?.render(120))).toBe(JSON.stringify(["                                                                                                                        ", " \u001b[1m⚠ Memorian gate skipped · quick_category_unavailable\u001b[22m                                                                   ", " Memorian could not judge the recalled memory candidates for the previous turn.                                         ", "                                                                                                                        "]))
   })
 
   test("#given a failed gate with an invalid reason but a valid runId #when rendered #then the title and the run line are drawn and the reason line is absent", () => {

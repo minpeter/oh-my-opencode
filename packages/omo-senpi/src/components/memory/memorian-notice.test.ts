@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { CustomEntry } from "@code-yeongyu/senpi"
 
 import { Theme } from "../../senpi-test-runtime"
-import { renderMemorianNudgedEntry } from "./memorian-notice"
+import { renderMemorianGateEntry, renderMemorianNudgedEntry, type MemorianGateRecord } from "./memorian-notice"
 
 const TEST_FG_COLORS = {
   accent: "#000000", bashMode: "#000000", border: "#000000", borderAccent: "#000000", borderMuted: "#000000",
@@ -20,9 +20,28 @@ const TEST_BG_COLORS = {
   customMessageBg: "#000000", selectedBg: "#000000", toolErrorBg: "#000000", toolPendingBg: "#000000", toolSuccessBg: "#000000", userMessageBg: "#000000",
 } as const satisfies ConstructorParameters<typeof Theme>[1]
 const theme = new Theme(TEST_FG_COLORS, TEST_BG_COLORS, "truecolor")
-function entry(data: unknown): CustomEntry<unknown> {
+function entry<T>(data: T): CustomEntry<T> {
   return { type: "custom", id: "entry-1", parentId: null, timestamp: new Date(0).toISOString(), customType: "test", data }
 }
+
+describe("memorian gate notice", () => {
+  test("#given a dropped deadline gate record #when rendered #then nothing is drawn", () => {
+    const record: MemorianGateRecord = { version: 1, status: "dropped", cause: "deadline", candidateCount: 2 }
+    expect(renderMemorianGateEntry(entry(record), { expanded: false }, theme)).toBeUndefined()
+  })
+
+  test("#given a skipped gate record #when rendered #then the why line names recalled memory candidates", () => {
+    const record: MemorianGateRecord = { version: 1, status: "skipped", cause: "quick_category_unavailable", candidateCount: 2 }
+    const component = renderMemorianGateEntry(entry(record), { expanded: false }, theme)
+    expect(component?.render(120).join("\n")).toContain("Memorian could not judge the recalled memory candidates for the previous turn.")
+  })
+
+  test("#given a failed gate record #when rendered #then the why line names recalled memory candidates", () => {
+    const record: MemorianGateRecord = { version: 1, status: "failed", cause: "child_failed", candidateCount: 2 }
+    const component = renderMemorianGateEntry(entry(record), { expanded: false }, theme)
+    expect(component?.render(120).join("\n")).toContain("Memorian failed while judging the recalled memory candidates for the previous turn.")
+  })
+})
 
 describe("memorian nudged provenance", () => {
   test("#given a steer provenance #when rendered #then the via line is shown", () => {
