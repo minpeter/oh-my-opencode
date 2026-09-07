@@ -13,11 +13,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
+// The engine builds its extension context from getters that assert the context is still active, so
+// probing cwd or sessionSettings on a context invalidated by a session replacement or reload throws.
+// This runs on session_start, so letting that escape would surface an extension stack instead of a
+// session: a stale context simply carries no policy surface.
 function hasModelPolicyContext(value: unknown): value is SenpiMainModelContext {
-  return isRecord(value)
-    && (value.cwd === undefined || typeof value.cwd === "string")
-    && isRecord(value.sessionSettings)
-    && typeof value.sessionSettings.setModelPolicy === "function"
+  try {
+    return isRecord(value)
+      && (value.cwd === undefined || typeof value.cwd === "string")
+      && isRecord(value.sessionSettings)
+      && typeof value.sessionSettings.setModelPolicy === "function"
+  } catch {
+    return false
+  }
 }
 
 /**

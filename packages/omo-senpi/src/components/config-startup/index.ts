@@ -155,9 +155,16 @@ function notificationMessages(
   return messages
 }
 
+// The engine builds its extension context from getters that assert the context is still active, so
+// reading `ui` on a context invalidated by a session replacement or reload throws. Startup notices
+// must survive that: a stale context has no UI, and the caller falls back to the logger.
 function notificationUi(value: unknown): NotificationUi | undefined {
   if (typeof value !== "object" || value === null || !("ui" in value)) return undefined
-  return isNotificationUi(value.ui) ? value.ui : undefined
+  try {
+    return isNotificationUi(value.ui) ? value.ui : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function isNotificationUi(value: unknown): value is NotificationUi {
