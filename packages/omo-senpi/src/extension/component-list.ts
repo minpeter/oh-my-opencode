@@ -6,6 +6,7 @@ import { createFallbackArchitectComponent } from "../components/fallback-archite
 import { createGitMasterAttributionComponent } from "../components/git-master"
 import { createInitDeepAdvisorComponent } from "../components/init-deep-advisor"
 import { createLspComponent } from "../components/lsp"
+import { createMainModelsComponent } from "../components/main-models"
 import { createMemoryComponent } from "../components/memory"
 import { createNativeBadgeComponent } from "../components/native-badge"
 import { createOnboardingComponent } from "../components/onboarding"
@@ -21,6 +22,7 @@ import type { OmoSenpiComponent } from "./types"
 export function createOmoSenpiComponents(taskComponent: OmoSenpiComponent): OmoSenpiComponent[] {
   return [
     createConfigStartupComponent(),
+    createMainModelsComponent(),
     createNativeBadgeComponent(),
     createOnboardingComponent(),
     createInitDeepAdvisorComponent(),

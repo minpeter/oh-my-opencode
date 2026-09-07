@@ -1,5 +1,6 @@
 import type { OmoConfig } from "@oh-my-opencode/omo-config-core"
 import {
+  isReservedPrimaryAgentName,
   resolveAgent,
   resolveCategory,
   type AgentDefinition,
@@ -34,6 +35,19 @@ export function createTaskChildPlanner(
 ): ChildPlanner {
   const availableAgents = listAvailableAgents(agents)
   return (spec): PlanResolution => {
+    // MAIN-role identities describe the MAIN session, never a child. Reject them before the
+    // explicit-model and same-name-category fallthroughs so no path can spawn one.
+    if (spec.subagent_type !== undefined && isReservedPrimaryAgentName(spec.subagent_type)) {
+      return {
+        kind: "error",
+        error: {
+          code: "unknown_target",
+          message: `Target "${spec.subagent_type}" is a MAIN-role agent and cannot be spawned as a child.`,
+          availableAgents,
+        },
+      }
+    }
+
     if (spec.subagent_type !== undefined) {
       const agentResolution = resolveAgentTarget(spec.subagent_type, spec.model, agents, resolveRegistry, omoConfig)
       if (agentResolution !== undefined) return agentResolution

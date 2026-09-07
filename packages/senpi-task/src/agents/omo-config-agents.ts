@@ -1,5 +1,6 @@
 import type { OmoAgentDef, OmoConfig } from "@oh-my-opencode/omo-config-core"
 
+import { isReservedPrimaryAgentName } from "./primary-agents"
 import { normalizeToolRules } from "./tools"
 import type { AgentDefinition } from "./types"
 
@@ -11,10 +12,14 @@ import type { AgentDefinition } from "./types"
  * (`execution_mode`, `max_depth`, `allowed_subagents`), and expresses tools as a `{ name: boolean }`
  * record; `AgentDefinition` carries an explicit `name`, camelCase keys, and last-match-wins tool rules.
  * This maps each field across, reusing the tool-rule normalizer, and omits any field the source omits.
+ *
+ * MAIN-role identities are skipped: their configured model chain describes the MAIN session, not a
+ * spawnable child, so they must not enter the child agent surface.
  */
 export function mapOmoConfigAgents(config: OmoConfig): Readonly<Record<string, AgentDefinition>> {
   const agents: Record<string, AgentDefinition> = {}
   for (const [name, def] of Object.entries(config.agents ?? {})) {
+    if (isReservedPrimaryAgentName(name)) continue
     agents[name] = toAgentDefinition(name, def)
   }
   return agents
