@@ -58,6 +58,12 @@ export function registrySnapshot(models: readonly { readonly id: string }[] = [{
   return registry
 }
 
+/** How a scripted turn ends after its script ran: the default nudge-then-stop pair, or one settled error. */
+export type ScriptedSettle = {
+  readonly stopReason: "error"
+  readonly errorMessage: string
+}
+
 interface ScriptedSession {
   readonly createSession: CreateChildSession
   readonly promptTexts: string[]
@@ -76,9 +82,14 @@ interface ScriptedSession {
  * The turn settles when the test resolves it; a never-resolved script pins the turn open. The
  * script's second argument emits session events mid-turn (a provider failure surfaces on the
  * event stream while prompt() is still pending), and `emit` on the stub does the same from the
- * test side.
+ * test side. A `settled` error ends the turn the way the engine does once its retry budget and
+ * fallback chain are exhausted: one error message_end, then prompt() returns without waiting for
+ * `resolve()`.
  */
-export function scriptedSession(script: (options: CreateAgentSessionOptions, emit: (event: ChildSessionEvent) => void) => Promise<void>): ScriptedSession {
+export function scriptedSession(
+  script: (options: CreateAgentSessionOptions, emit: (event: ChildSessionEvent) => void) => Promise<void>,
+  settled?: ScriptedSettle,
+): ScriptedSession {
   let captured: CreateAgentSessionOptions | undefined
   let settle: (() => void) | undefined
   let resolveRequested = false
@@ -100,6 +111,10 @@ export function scriptedSession(script: (options: CreateAgentSessionOptions, emi
       const options = captured
       if (options === undefined) throw new Error("session options were not captured")
       await script(options, emit)
+      if (settled !== undefined) {
+        emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: settled.stopReason, errorMessage: settled.errorMessage } })
+        return
+      }
       for (const listener of listeners) {
         listener({ type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "nudge", arguments: {} }], stopReason: "toolUse" } })
         listener({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop" } })

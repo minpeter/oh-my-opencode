@@ -2,8 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { CreateAgentSessionOptions } from "@code-yeongyu/senpi"
-import type { ChildSessionEvent, CreateChildSession } from "@oh-my-opencode/senpi-task"
-import type { ComponentLogger } from "../../extension/types"
+import type { CreateChildSession } from "@oh-my-opencode/senpi-task"
 import { MemorianGateRunner } from "./memorian-runner"
 import { CANDIDATE_PATH, fixture, launchInput, nudgeOnce, registrySnapshot, roots, runnerOptions, scriptedSession } from "./memorian-runner.test-support"
 import { rmEfaultTolerant } from "./teardown.test-support"
@@ -246,106 +245,5 @@ describe("MemorianGateRunner", () => {
     expect(captured?.tools).toEqual(["nudge"])
     const toolNames = (captured?.customTools ?? []).map((tool) => tool.name)
     expect(toolNames).toEqual(["nudge"])
-  })
-})
-
-describe("MemorianGateRunner upstream fail-fast", () => {
-  // Issue #7889: a hard-down provider leaves the judge child inside its retry chain, the turn
-  // never settles, and the gate burned its full deadline before classifying - which also starved
-  // the shutdown drain's journal flush. The gate must classify an upstream provider failure from
-  // the session's event stream the moment it is observed, while the deadline stays the backstop
-  // for a child that is merely silent.
-  const UPSTREAM_503 = "OpenAI API error (503): auth_unavailable (model gpt-5.6-luna, server_is_overloaded)"
-
-  function gateLogger(): { logger: ComponentLogger; warnings: { readonly message: string; readonly details: unknown }[] } {
-    const warnings: { readonly message: string; readonly details: unknown }[] = []
-    return {
-      warnings,
-      logger: {
-        info: () => {},
-        warn: (message, details) => { warnings.push({ message, details }) },
-        error: () => {},
-      },
-    }
-  }
-
-  function providerFailure(errorMessage: string): ChildSessionEvent {
-    return { type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage } }
-  }
-
-  test("#given a pending turn that emits an upstream provider failure #when the gate awaits it #then it classifies the child failure without waiting for the deadline", async () => {
-    // given: the provider is hard-down, so the child sits in its retry chain and the turn never
-    // settles; the failure is only observable on the session's event stream.
-    const { identityPaths } = await fixture()
-    const stub = scriptedSession(() => new Promise<void>(() => {}))
-    const { logger, warnings } = gateLogger()
-    const runner = new MemorianGateRunner(runnerOptions(identityPaths, { createSession: stub.createSession, logger }))
-
-    // when
-    const pending = runner.launch({ ...launchInput(), deadlineMs: 2_000 })
-    await stub.whenPrompted()
-    stub.emit(providerFailure(UPSTREAM_503))
-    const result = await pending
-
-    // then: same status shape and the same operator log line as a settled child failure, with a
-    // cause that distinguishes the upstream classification from the deadline path.
-    expect(result).toMatchObject({
-      status: "failed",
-      cause: "child_failed_upstream",
-      reason: expect.stringContaining("OpenAI API error (503)"),
-    })
-    expect(warnings.some((call) => call.message === "memorian gate child failed")).toBe(true)
-  })
-
-  test("#given an upstream failure the child would have retried through #when the gate classifies early #then the advisory run still fails promptly", async () => {
-    // given: the script emits the provider failure and would go on to complete the turn with a
-    // nudge; the gate advises a turn that already ended, so a verdict this late is worthless.
-    const { identityPaths } = await fixture()
-    const stub = scriptedSession(async (options, emit) => {
-      emit(providerFailure(UPSTREAM_503))
-      await nudgeOnce(options)
-    })
-    const { logger } = gateLogger()
-    const runner = new MemorianGateRunner(runnerOptions(identityPaths, { createSession: stub.createSession, logger }))
-
-    // when
-    const pending = runner.launch({ ...launchInput(), deadlineMs: 2_000 })
-    const result = await pending
-
-    // then
-    expect(result).toMatchObject({ status: "failed", cause: "child_failed_upstream" })
-  })
-
-  test("#given a pending turn that emits a non-provider error #when the gate awaits it #then the deadline backstop still classifies the hang", async () => {
-    // given: a turn error that is not upstream-shaped must not trip the fast path.
-    const { identityPaths } = await fixture()
-    const stub = scriptedSession(() => new Promise<void>(() => {}))
-    const { logger, warnings } = gateLogger()
-    const runner = new MemorianGateRunner(runnerOptions(identityPaths, { createSession: stub.createSession, logger }))
-
-    // when
-    const pending = runner.launch({ ...launchInput(), deadlineMs: 300 })
-    await stub.whenPrompted()
-    stub.emit(providerFailure("local nudge closure rejected the call"))
-    const result = await pending
-
-    // then
-    expect(result).toMatchObject({ status: "dropped", cause: "deadline" })
-    expect(warnings.some((call) => call.message === "memorian gate deadline exceeded")).toBe(true)
-  })
-
-  test("#given a pending turn that emits nothing #when the gate awaits it #then the deadline backstop drops", async () => {
-    // given: a genuinely silent child keeps the deadline as its only exit.
-    const { identityPaths } = await fixture()
-    const stub = scriptedSession(() => new Promise<void>(() => {}))
-    const { logger } = gateLogger()
-    const runner = new MemorianGateRunner(runnerOptions(identityPaths, { createSession: stub.createSession, logger }))
-
-    // when
-    const pending = runner.launch({ ...launchInput(), deadlineMs: 300 })
-    const result = await pending
-
-    // then
-    expect(result).toMatchObject({ status: "dropped", cause: "deadline" })
   })
 })

@@ -1,10 +1,12 @@
 // Memorian gate runner (plan .omo/plans/memorian-m3-gate.md todo 7).
 //
 // At settle, when lexical candidates exist, ONE quick-category child judges them against the recent
-// transcript and answers only through the nudge tool. The launch follows the facts runner's
-// semantics - resolveReflectionModel("quick"), warn+skip when the category cannot resolve, no
-// fallback ladder, one activeLaunch latch - but carries NO durable machinery: there is no queue, no
-// failure store and no run ledger, because a gate run that dies is simply a turn without a nudge.
+// transcript and answers only through the nudge tool. The launch resolves the quick category the
+// way the facts runner does - resolveReflectionModel("quick"), warn+skip when the category cannot
+// resolve - and hands the category's own chain to the child as its runtime fallback ladder; only
+// the beyond-category ladder is refused. It keeps one activeLaunch latch but carries NO durable
+// machinery: there is no queue, no failure store and no run ledger, because a gate run that dies
+// is simply a turn without a nudge.
 //
 // The judge runs IN-PROCESS through senpi-task's InProcessRunner, exactly like the curated
 // read-only agents: the child's ResourceLoader has no builtin extensions (no hooks lock can fail
@@ -155,9 +157,10 @@ export class MemorianGateRunner {
     // resolveReflectionModel also has a beyond-category ladder (registry_fallback / session_inherit)
     // that resolves ANY usable registry model when the quick chain is dead, and it marks those
     // resolutions with a `source`. Category-sourced resolutions carry no `source`. The gate is
-    // quick-PINNED with no fallback: an advisory read of a turn that already ended must never land
+    // pinned to the quick category: an advisory read of a turn that already ended must never land
     // on an arbitrary, possibly frontier-priced model, so anything outside the category counts as
-    // unavailable - warn and skip.
+    // unavailable - warn and skip. The category's own chain is the judge's fallback ladder: it is
+    // carried into the child (memorian-judge-chain.ts), where the engine rotates rungs mid-turn.
     if (resolution.kind === "category_unavailable" || resolution.source !== undefined) {
       this.options.logger?.warn("memorian gate quick category unavailable", {
         cause: resolution.kind === "category_unavailable" ? resolution.cause : resolution.source,

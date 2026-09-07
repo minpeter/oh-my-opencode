@@ -43,15 +43,38 @@ describe("memorian gate notice", () => {
   })
 })
 
-describe("memorian nudged provenance", () => {
-  test("#given a steer provenance #when rendered #then the via line is shown", () => {
+describe("memorian nudged aha moment", () => {
+  test("#given a nudged record #when rendered #then the title celebrates the recollection", () => {
     const component = renderMemorianNudgedEntry(entry({ version: 1, nudges: [{ path: "a.md", hint: "Use it." }], via: "steer" }), { expanded: false }, theme)
-    expect(component?.render(120).join("\n")).toContain("via steer")
+    const rendered = component?.render(120).join("\n")
+    expect(rendered).toContain("✦ Aha moment!")
+    expect(rendered).toContain("just remembered: Use it.")
+    expect(rendered).toContain("a.md")
   })
 
-  test("#given an unknown provenance #when rendered #then no via line is shown", () => {
-    const component = renderMemorianNudgedEntry(entry({ version: 1, nudges: [{ path: "a.md", hint: "Use it." }], via: "bogus" }), { expanded: false }, theme)
-    expect(component?.render(120).join("\n")).not.toContain("via bogus")
-    expect(component?.render(120).join("\n")).not.toContain("via ")
+  test("#given a second nudge #when rendered #then the extra hint continues the recollection", () => {
+    const component = renderMemorianNudgedEntry(
+      entry({ version: 1, nudges: [{ path: "a.md", hint: "Use it." }, { path: "b.md", hint: "Also this." }], via: "wake" }),
+      { expanded: false },
+      theme,
+    )
+    const rendered = component?.render(120).join("\n")
+    expect(rendered).toContain("just remembered: Use it.")
+    expect(rendered).toContain("also remembered: Also this.")
+  })
+
+  test("#given any provenance #when rendered #then no provenance line is shown", () => {
+    for (const via of ["steer", "wake", "prompt", "bogus"]) {
+      const component = renderMemorianNudgedEntry(entry({ version: 1, nudges: [{ path: "a.md", hint: "Use it." }], via }), { expanded: false }, theme)
+      expect(component?.render(120).join("\n")).not.toContain("via ")
+    }
+  })
+
+  test("#given an expanded nudged record #when rendered #then the stored-memory caveat is available", () => {
+    const record = { version: 1, nudges: [{ path: "a.md", hint: "Use it." }] }
+    expect(renderMemorianNudgedEntry(entry(record), { expanded: false }, theme)?.render(120).join("\n")).not.toContain("not current state")
+    expect(renderMemorianNudgedEntry(entry(record), { expanded: true }, theme)?.render(120).join("\n")).toContain(
+      "it is a hint, not current state",
+    )
   })
 })
