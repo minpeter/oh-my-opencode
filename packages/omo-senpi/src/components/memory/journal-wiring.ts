@@ -21,6 +21,7 @@ import {
 import type { ComponentLogger, SenpiExtensionAPI } from "../../extension/types"
 import { MEMORY_NOTICE_CUSTOM_TYPE } from "./prompt"
 import { RECALL_CUSTOM_TYPE } from "./recall-wiring"
+import { readContextProperty } from "./wiring-context"
 
 export interface MemoryJournalWiringOptions {
   readonly identityPaths: MemoryIdentityPaths
@@ -95,8 +96,7 @@ interface BranchSurface {
 }
 
 function readBranchSurface(eventCtx: unknown): BranchSurface | undefined {
-  if (!isRecord(eventCtx)) return undefined
-  const manager = eventCtx.sessionManager
+  const manager = readContextProperty(eventCtx, "sessionManager")
   if (!isRecord(manager)) return undefined
   const getBranch = manager.getBranch
   const getSessionId = manager.getSessionId
@@ -239,3 +239,6 @@ function stringOf(value: unknown): string | undefined {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
+
+/** @internal Exposed so the stale-context contract can be asserted directly. */
+export const readBranchSurfaceForTest = readBranchSurface

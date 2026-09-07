@@ -7,6 +7,7 @@ import {
   MEMORY_TOOL_NAME,
 } from "./tool-metadata"
 import { joinFields, noticeComponent } from "./worker/entry-renderers"
+import { readContextProperty } from "./wiring-context"
 
 export const ACCEPTED_TURNS_ENTRY_TYPE = "omo-memory:accepted-turns"
 
@@ -186,8 +187,8 @@ function readSession(eventCtx: unknown): { id: string; entries: readonly unknown
 }
 
 function readSessionId(eventCtx: unknown): string | undefined {
-  if (!isRecord(eventCtx) || !isRecord(eventCtx.sessionManager)) return undefined
-  const manager = eventCtx.sessionManager
+  const manager = readContextProperty(eventCtx, "sessionManager")
+  if (!isRecord(manager)) return undefined
   const getter = manager.getSessionId
   if (typeof getter !== "function") return undefined
   const value = Reflect.apply(getter, manager, [])
@@ -213,3 +214,6 @@ function isMemoryToolName(value: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
+
+/** @internal Exposed so the stale-context contract can be asserted directly. */
+export const readSessionIdForTest = readSessionId

@@ -3,6 +3,7 @@ import { join } from "node:path"
 
 import type { SenpiExtensionAPI } from "../../extension/types"
 import type { MemoryIdentityContext } from "./context"
+import { readContextProperty } from "./wiring-context"
 
 /**
  * Structural match of senpi's ResourcesDiscoverResult (core/extensions/types.ts). Declared
@@ -74,9 +75,8 @@ function isResourcesDiscoverPayload(payload: unknown): boolean {
 }
 
 function readSessionId(eventCtx: unknown): string | undefined {
-  if (!isRecord(eventCtx)) return undefined
-  const manager = isRecord(eventCtx.sessionManager) ? eventCtx.sessionManager : undefined
-  if (manager === undefined) return undefined
+  const manager = readContextProperty(eventCtx, "sessionManager")
+  if (!isRecord(manager)) return undefined
   const getSessionId = manager.getSessionId
   if (typeof getSessionId !== "function") return undefined
   const id = Reflect.apply(getSessionId, manager, [])
@@ -86,3 +86,6 @@ function readSessionId(eventCtx: unknown): string | undefined {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
+
+/** @internal Exposed so the stale-context contract can be asserted directly. */
+export const readSessionIdForTest = readSessionId

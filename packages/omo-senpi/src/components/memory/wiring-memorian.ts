@@ -7,7 +7,7 @@ import { registerMemorianHooks } from "./memorian-hooks"
 import { createThrottledPrune } from "./memorian-run-retention"
 import { createMemorianTrigger, type MemorianTrigger } from "./memorian-trigger"
 import { createMemorianGateWiring, type MemorianGateWiring } from "./memorian-wiring"
-import { sessionIdFrom } from "./wiring-context"
+import { readContextProperty, sessionIdFrom } from "./wiring-context"
 import { resolveMemoryModelRegistry } from "./model-registry-resolver"
 import { ToolArgWindow } from "./recall-query-planner-tools"
 import type { MemoryRecallWiring } from "./recall-wiring"
@@ -98,8 +98,8 @@ export function createMemorianComposition(
         resolveContext: runtime.resolveContext,
         registerSettle: false,
         resolveSessionId: (eventCtx) => {
-          const eventRecord = isRecord(eventCtx) ? eventCtx : undefined
-          const manager = eventRecord !== undefined && isRecord(eventRecord.sessionManager) ? eventRecord.sessionManager : undefined
+          const managerValue = readContextProperty(eventCtx, "sessionManager")
+          const manager = isRecord(managerValue) ? managerValue : undefined
           const getter = manager === undefined ? undefined : manager.getSessionId
           if (typeof getter !== "function") return undefined
           const id = Reflect.apply(getter, manager, [])
