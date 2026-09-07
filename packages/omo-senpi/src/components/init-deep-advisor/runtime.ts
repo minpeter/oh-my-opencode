@@ -51,8 +51,19 @@ export async function runAdvisorAfterPreflight(
   if (eligibility === null) return
   writeLastProposedHead(stateDir, repo, currentHead)
   await new Promise<void>((resolve) => setTimeout(resolve, 0))
-  const choice = await eventCtx.ui?.select("Init-deep", [...CHOICES], { timeout: 60_000 })
+  const choice = await promptChoice(eventCtx)
   handleChoice(choice, pi, stateDir, repo, root, eligibility)
+}
+
+// The prompt is reached only after an await, and the engine exposes `ui` as a getter that asserts the
+// context is still active. A reload landing in that window must skip the prompt, not throw out of the
+// session_start handler.
+async function promptChoice(eventCtx: ExtensionContext): Promise<string | undefined> {
+  try {
+    return await eventCtx.ui?.select("Init-deep", [...CHOICES], { timeout: 60_000 })
+  } catch {
+    return undefined
+  }
 }
 
 function handleChoice(

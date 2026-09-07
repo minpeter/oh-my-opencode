@@ -8,6 +8,7 @@ import {
 
 import type { MemoryIdentityContext } from "./context"
 import { estimateSystemTokens, MEMORY_PRESSURE_SOFT_RATIO } from "./status"
+import { readContextProperty } from "./wiring-context"
 
 export const MEMORY_PROMPT_TEMPLATE = "omo-senpi:before_agent_start:v3"
 export const MEMORY_NOTICE_CUSTOM_TYPE = "omo-memory:notice"
@@ -124,8 +125,8 @@ function readSystemPrompt(payload: unknown): string | undefined {
 }
 
 function readPromptSession(eventCtx: unknown): MemoryPromptSession | undefined {
-  if (!isRecord(eventCtx)) return undefined
-  const manager = isRecord(eventCtx.sessionManager) ? eventCtx.sessionManager : undefined
+  const managerValue = readContextProperty(eventCtx, "sessionManager")
+  const manager = isRecord(managerValue) ? managerValue : undefined
   if (manager === undefined) return undefined
   const getSessionId = manager.getSessionId
   const getBranch = manager.getBranch

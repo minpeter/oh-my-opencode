@@ -176,8 +176,8 @@ function isAcceptedTurnsRecord(value: unknown): value is AcceptedTurnsRecord {
 }
 
 function readSession(eventCtx: unknown): { id: string; entries: readonly unknown[] } | undefined {
-  if (!isRecord(eventCtx) || !isRecord(eventCtx.sessionManager)) return undefined
-  const manager = eventCtx.sessionManager
+  const manager = readContextProperty(eventCtx, "sessionManager")
+  if (!isRecord(manager)) return undefined
   const getSessionId = manager.getSessionId
   const getEntries = manager.getEntries
   if (typeof getSessionId !== "function" || typeof getEntries !== "function") return undefined
