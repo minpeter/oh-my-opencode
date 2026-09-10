@@ -6,6 +6,7 @@ import { builtinModules } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { findStaleRuntimePersona, stageRuntimePersonas } from "./persona-artifacts.mjs"
+import { writeBuildFailureDiagnostics } from "./build-failure-diagnostics.mjs"
 
 import {
   artifactsMatch,
@@ -101,11 +102,11 @@ export async function buildExtension(options = {}) {
   const advisorRuntimeOutput = options.advisorRuntimeOutputPath ?? (options.outputPath === undefined
     ? advisorRuntimeOutputPath
     : join(dirname(output), "omo-init-deep-advisor.js"))
-  const mainInputs = await buildEntry(entryPath, output, buildDefines)
-  const taskInputs = await buildEntry(taskEntryPath, taskOutput, buildDefines)
-  const memberInputs = await buildEntry(memberEntryPath, memberOutput, buildDefines)
-  const supervisorInputs = await buildEntry(supervisorEntryPath, supervisorOutput, buildDefines)
-  const advisorRuntimeInputs = await buildEntry(advisorRuntimeEntryPath, advisorRuntimeOutput, buildDefines)
+  const mainInputs = await buildEntry(entryPath, output, buildDefines, options.diagnosticMetadata)
+  const taskInputs = await buildEntry(taskEntryPath, taskOutput, buildDefines, options.diagnosticMetadata)
+  const memberInputs = await buildEntry(memberEntryPath, memberOutput, buildDefines, options.diagnosticMetadata)
+  const supervisorInputs = await buildEntry(supervisorEntryPath, supervisorOutput, buildDefines, options.diagnosticMetadata)
+  const advisorRuntimeInputs = await buildEntry(advisorRuntimeEntryPath, advisorRuntimeOutput, buildDefines, options.diagnosticMetadata)
   // Bundling inlines assets.ts but its markdown is read from disk at runtime next to the bundle,
   // so the persona must be staged into the extension output directory the loader executes from.
   await Promise.all([
@@ -114,7 +115,7 @@ export async function buildExtension(options = {}) {
   return { mainInputs, taskInputs, memberInputs, supervisorInputs, advisorRuntimeInputs }
 }
 
-async function buildEntry(entry, output, buildDefines) {
+async function buildEntry(entry, output, buildDefines, diagnosticMetadata) {
   await mkdir(dirname(output), { recursive: true })
   const metafile = `${output}.meta.json`
   try {
@@ -124,6 +125,9 @@ async function buildEntry(entry, output, buildDefines) {
       ...Object.entries(buildDefines).flatMap(([name, value]) => ["--define", `${name}=${JSON.stringify(value)}`]),
       ...externalSpecifiers.flatMap((specifier) => ["--external", specifier]),
     ])
+    if (diagnosticMetadata !== undefined) {
+      diagnosticMetadata.set(output, { metafile: JSON.parse(await readFile(metafile, "utf8")), entry, buildDefines })
+    }
     await normalizeBuiltinImports(output, builtinModuleNames)
     await minifyBundle(output)
     return await attachBuildMarker({
@@ -177,28 +181,38 @@ export async function checkExtensionCurrent(options = {}) {
   const expectedMemberOutput = join(tempRoot, "omo-member.js")
   const expectedSupervisorOutput = join(tempRoot, "memory-run-supervisor.mjs")
   const expectedAdvisorRuntimeOutput = join(tempRoot, "omo-init-deep-advisor.js")
+  const diagnosticsDir = options.diagnosticsDir ?? process.env.OMO_SENPI_BUILD_DIAGNOSTICS
+  const diagnosticMetadata = diagnosticsDir === undefined ? undefined : new Map()
   try {
     await buildExtension({
+      diagnosticMetadata,
       outputPath: expectedOutput,
       taskOutputPath: expectedTaskOutput,
       memberOutputPath: expectedMemberOutput,
       supervisorOutputPath: expectedSupervisorOutput,
       advisorRuntimeOutputPath: expectedAdvisorRuntimeOutput,
     })
-    if (!artifactsMatch(currentMain, await readFile(expectedOutput, "utf8"))) {
-      return { ok: false, reason: "stale-output", output }
+    const mismatches = []
+    for (const [path, rebuilt, current] of [
+      [output, expectedOutput, currentMain],
+      [taskOutput, expectedTaskOutput, currentTask],
+      [memberOutput, expectedMemberOutput, currentMember],
+      [supervisorOutput, expectedSupervisorOutput, currentSupervisor],
+      [advisorRuntimeOutput, expectedAdvisorRuntimeOutput, currentAdvisorRuntime],
+    ]) {
+      const expected = await readFile(rebuilt, "utf8")
+      if (!artifactsMatch(current, expected)) mismatches.push({ output: path, rebuilt, current, expected })
     }
-    if (!artifactsMatch(currentTask, await readFile(expectedTaskOutput, "utf8"))) {
-      return { ok: false, reason: "stale-output", output: taskOutput }
-    }
-    if (!artifactsMatch(currentMember, await readFile(expectedMemberOutput, "utf8"))) {
-      return { ok: false, reason: "stale-output", output: memberOutput }
-    }
-    if (!artifactsMatch(currentSupervisor, await readFile(expectedSupervisorOutput, "utf8"))) {
-      return { ok: false, reason: "stale-output", output: supervisorOutput }
-    }
-    if (!artifactsMatch(currentAdvisorRuntime, await readFile(expectedAdvisorRuntimeOutput, "utf8"))) {
-      return { ok: false, reason: "stale-output", output: advisorRuntimeOutput }
+    if (mismatches.length > 0) {
+      if (diagnosticsDir !== undefined) {
+        try {
+          await writeBuildFailureDiagnostics({ directory: diagnosticsDir, repoRoot, mismatches, metadata: diagnosticMetadata, buildSettings: BUILD_SETTINGS })
+        } catch (error) {
+          // Evidence failure must not replace the original stale-output result.
+          console.error("Could not retain build failure diagnostics:", error)
+        }
+      }
+      return { ok: false, reason: "stale-output", output: mismatches[0].output }
     }
     const stalePersona = await findStaleRuntimePersona(tempRoot, dirname(output), repoRoot)
     if (stalePersona !== undefined) return { ok: false, reason: "stale-output", output: stalePersona }
