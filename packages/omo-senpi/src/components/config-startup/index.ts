@@ -1,6 +1,8 @@
-import { posix, win32 } from "node:path"
+import { posix, resolve, win32 } from "node:path"
 
 import {
+  resolveOmoConfigNamespace,
+  resolveUserOmoConfigDirectory,
   runMigrations,
   type MigrationBoundary,
   type MigrationClock,
@@ -63,7 +65,14 @@ function migratedSources(results: readonly MigrationRunResult[]): readonly strin
 
 /** Runs the shared, lock-protected migration engine before Senpi reads its unified configuration. */
 export function runSenpiStartupMigration(options: SenpiStartupMigrationOptions): SenpiStartupMigrationResult {
+  const environment = options.environment ?? process.env
   const homeDir = homeDirectory(options)
+  // Legacy discovery and journal recovery both target the default user directory.
+  if (resolveOmoConfigNamespace(environment) !== ".omo"
+    || (environment.OMO_USER_CONFIG_DIR !== undefined
+      && resolveUserOmoConfigDirectory(environment) !== resolve(homeDir, ".omo"))) {
+    return { journalResumed: false, migratedFrom: [], results: [] }
+  }
   if (homeDir.length === 0) {
     return {
       error: "Cannot migrate configuration because no home directory is available",
@@ -151,9 +160,16 @@ function notificationMessages(
   return messages
 }
 
+// The engine builds its extension context from getters that assert the context is still active, so
+// reading `ui` on a context invalidated by a session replacement or reload throws. Startup notices
+// must survive that: a stale context has no UI, and the caller falls back to the logger.
 function notificationUi(value: unknown): NotificationUi | undefined {
   if (typeof value !== "object" || value === null || !("ui" in value)) return undefined
-  return isNotificationUi(value.ui) ? value.ui : undefined
+  try {
+    return isNotificationUi(value.ui) ? value.ui : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function isNotificationUi(value: unknown): value is NotificationUi {

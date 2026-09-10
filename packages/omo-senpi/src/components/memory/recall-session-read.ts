@@ -3,6 +3,7 @@
 // hidden channels are excluded so a previous hint cannot re-enter the query.
 
 import { MEMORY_NOTICE_CUSTOM_TYPE } from "./prompt"
+import { readContextProperty } from "./wiring-context"
 
 export const RECALL_CUSTOM_TYPE = "omo-memorian:recall"
 
@@ -60,8 +61,7 @@ function judgeTurn(entry: unknown): RecallTranscriptTurn | undefined {
 }
 
 export function readSession(eventCtx: unknown): RecallSession | undefined {
-  if (!isRecord(eventCtx)) return undefined
-  const manager = eventCtx.sessionManager
+  const manager = readContextProperty(eventCtx, "sessionManager")
   if (!isRecord(manager)) return undefined
   const getSessionId = manager.getSessionId
   const getBranch = manager.getBranch

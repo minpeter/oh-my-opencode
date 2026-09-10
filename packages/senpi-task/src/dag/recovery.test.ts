@@ -248,8 +248,8 @@ describe("DAG crash recovery", () => {
     const outcomes = await createDagRecovery({ store, taskManager: new RecoveryTaskManager(), hostPid: 101 })
       .resumePausedRuns(parentSessionId)
 
-    // then
-    expect(outcomes).toEqual([{ runId, kind: "skipped", reason: "live_lease" }])
+    // then - the live holder is reported so the caller can wait for that pid to exit and retry
+    expect(outcomes).toEqual([{ runId, kind: "skipped", reason: "live_lease", holderPid: process.pid }])
   })
 
   test("#given no injected liveness probe #when a paused run's previous holder pid does not exist #then the default probe claims the run", async () => {
@@ -381,7 +381,7 @@ describe("DAG crash recovery", () => {
 
     // then
     expect(outcomesA.filter((outcome) => outcome.kind === "resumed")).toHaveLength(1)
-    expect(outcomesB).toEqual([{ runId, kind: "skipped", reason: "live_lease" }])
+    expect(outcomesB).toEqual([{ runId, kind: "skipped", reason: "live_lease", holderPid: 101 }])
   })
 
   test("#given a crash after a terminal transition reaches the WAL but before its reducer #when recovery reopens #then output artifact metadata and run stats are rebuilt", async () => {

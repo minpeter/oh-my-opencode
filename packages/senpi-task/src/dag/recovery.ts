@@ -42,6 +42,10 @@ export type DagRecoveryOutcome = {
   readonly record?: DagRunRecordV1
   readonly reusedOutputs?: ReadonlyMap<DagNodeId, string>
   readonly reason?: "foreign_session" | "live_lease" | "not_paused"
+  // The pid a `live_lease` skip observed alive. A host that paused the run for its own shutdown is
+  // often still exiting when its successor resumes the session, so the caller watches this pid and
+  // retries the claim once it is gone instead of leaving the run paused for good.
+  readonly holderPid?: number
 }
 
 export type DagRecoveryOptions = {
@@ -79,7 +83,8 @@ type RecoveryPendingTerminalResult = {
 
 type ClaimedRun =
   | { readonly kind: "claimed"; readonly record: RecoverableRecord }
-  | { readonly kind: "skipped"; readonly reason: "foreign_session" | "live_lease" | "not_paused" }
+  | { readonly kind: "skipped"; readonly reason: "foreign_session" | "not_paused" }
+  | { readonly kind: "skipped"; readonly reason: "live_lease"; readonly holderPid: number }
 
 export function createDagRecovery(options: DagRecoveryOptions): DagRecovery {
   const context: RecoveryContext = {
@@ -134,7 +139,7 @@ async function resumePausedRuns(
       : claimPausedRun(context, observed.runId, parentSessionId)
     if (claim.kind === "skipped") {
       if (!foreign && claim.reason === "live_lease") {
-        outcomes.push({ runId: observed.runId, kind: "skipped", reason: claim.reason })
+        outcomes.push({ runId: observed.runId, kind: "skipped", reason: claim.reason, holderPid: claim.holderPid })
       }
       continue
     }
@@ -160,7 +165,7 @@ function claimOrphanedRun(context: RecoveryContext, observed: RecoverableRecord,
     const holder = fresh.leaseHolderPid ?? fresh.previousLeaseHolderPid
     if (holder === undefined) return { kind: "skipped", reason: "foreign_session" }
     if (holder !== context.hostPid && context.isProcessAlive(holder)) {
-      return { kind: "skipped", reason: "live_lease" }
+      return { kind: "skipped", reason: "live_lease", holderPid: holder }
     }
     // Re-home fully: parent AND root move to the adopter so children spawned after the resume
     // carry live ancestry, matching what a fresh start records (the dag tool wires root = session).
@@ -182,7 +187,7 @@ function claimPausedRun(context: RecoveryContext, runId: DagRunId, parentSession
     if (fresh.parentSessionId !== parentSessionId) return { kind: "skipped", reason: "foreign_session" }
     const priorHolder = fresh.leaseHolderPid ?? fresh.previousLeaseHolderPid
     if (priorHolder !== undefined && context.isProcessAlive(priorHolder)) {
-      return { kind: "skipped", reason: "live_lease" }
+      return { kind: "skipped", reason: "live_lease", holderPid: priorHolder }
     }
     const claimed: RecoverableRecord = { ...fresh, leaseHolderPid: context.hostPid }
     context.store.writeCheckpoint(runId, claimed)

@@ -62,3 +62,17 @@ export interface OmoSenpiComponent {
   name: string
   register(pi: SenpiExtensionAPI, ctx: ComponentContext): void | Promise<void>
 }
+
+export interface SenpiSessionModelPolicy {
+  models: readonly {
+    model: string
+    thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+  }[]
+}
+
+export interface SenpiMainModelContext {
+  cwd?: string
+  sessionSettings: {
+    setModelPolicy(policy: SenpiSessionModelPolicy | undefined): Promise<void>
+  }
+}

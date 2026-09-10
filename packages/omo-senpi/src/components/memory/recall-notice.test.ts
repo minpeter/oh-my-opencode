@@ -23,8 +23,8 @@ describe("renderMemorianNudgedEntry", () => {
     const component = renderMemorianNudgedEntry({ data: record } as never, { expanded: false }, PLAIN_THEME as never)
     expect(component).toBeDefined()
     const lines = component!.render(120).join("\\n")
-    expect(lines).toContain("Memorian nudged")
-    expect(lines).toContain("Use the rollout policy.")
+    expect(lines).toContain("✦ Aha moment!")
+    expect(lines).toContain("just remembered: Use the rollout policy.")
     expect(lines).toContain("memory/a.md")
   })
 

@@ -445,11 +445,23 @@ jobs:
       # which are backslash-separated on Windows, so the source digest is platform-dependent and
       # a committed artifact can never match on every OS. One platform is enough to catch drift.
       - name: Verify committed Senpi plugin bundle is current
+        id: senpi-freshness
         if: needs.ci-mode.outputs.run_heavy == 'true' && matrix.os == 'ubuntu-latest'
         shell: bash
+        env:
+          OMO_SENPI_BUILD_DIAGNOSTICS: ${{ runner.temp }}/omo-senpi-freshness
         run: |
           set -euo pipefail
           node packages/omo-senpi/plugin/scripts/build-extension.mjs --check
+
+      - name: Upload Senpi freshness failure evidence
+        if: failure() && steps.senpi-freshness.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: omo-senpi-freshness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/omo-senpi-freshness/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run Senpi compatibility tests
         if: needs.ci-mode.outputs.run_heavy == 'true' && runner.os != 'Windows' && (matrix.os == 'ubuntu-latest' || needs.ci-mode.outputs.full_matrix == 'true')

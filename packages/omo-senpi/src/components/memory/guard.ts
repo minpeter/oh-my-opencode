@@ -5,6 +5,7 @@ import type { ToolCallEventResult } from "@code-yeongyu/senpi"
 
 import type { ComponentContext, SenpiExtensionAPI } from "../../extension/types"
 import type { MemoryIdentityContext } from "./context"
+import { readContextProperty } from "./wiring-context"
 
 const FILE_TOOL_NAMES = ["read", "write", "edit", "ls", "find", "grep", "glob"] as const
 const ENUMERATION_TOOL_NAMES = new Set(["ls", "find", "grep", "glob"])
@@ -223,8 +224,8 @@ function adviseBashOnce(
 }
 
 function readSessionId(value: unknown): string {
-  if (!isRecord(value) || !isRecord(value.sessionManager)) return "unknown-session"
-  const manager = value.sessionManager
+  const manager = readContextProperty(value, "sessionManager")
+  if (!isRecord(manager)) return "unknown-session"
   const getSessionId = manager.getSessionId
   if (typeof getSessionId !== "function") return "unknown-session"
   const sessionId = Reflect.apply(getSessionId, manager, [])
@@ -239,3 +240,6 @@ function isMissingPathError(error: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
+
+/** @internal Exposed so the stale-context contract can be asserted directly. */
+export const readSessionIdForTest = readSessionId

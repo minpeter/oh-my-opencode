@@ -16,7 +16,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function uiFromContext(value: unknown): NativeBadgeUi | undefined {
   if (!isRecord(value)) return undefined
-  const ui = value["ui"]
+  // The engine exposes `ui` as a getter that asserts the context is still active, so reading it on a
+  // context invalidated by a session replacement or reload throws. The badge is a best-effort footer
+  // decoration and rides agent_settled, which also fires while a model error is retried: letting that
+  // probe escape would surface an extension stack over the TUI. A stale context simply has no UI.
+  let ui: unknown
+  try {
+    ui = value["ui"]
+  } catch {
+    return undefined
+  }
   if (!isRecord(ui)) return undefined
   const setStatus = ui["setStatus"]
   if (typeof setStatus !== "function") return undefined

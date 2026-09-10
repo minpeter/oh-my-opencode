@@ -1,6 +1,8 @@
-import { posix } from "node:path"
+import { posix, resolve } from "node:path"
 
 import {
+  resolveOmoConfigNamespace,
+  resolveUserOmoConfigDirectory,
   runMigrations,
   type MigrationBoundary,
   type MigrationClock,
@@ -60,7 +62,14 @@ function skippedConflictCount(results: readonly MigrationRunResult[]): number {
 export function runOpenCodeStartupMigration(
   options: OpenCodeStartupMigrationOptions,
 ): OpenCodeStartupMigrationResult {
+  const environment = options.environment ?? process.env
   const homeDir = homeDirectory(options)
+  // Legacy discovery and journal recovery both target the default user directory.
+  if (resolveOmoConfigNamespace(environment) !== ".omo"
+    || (environment.OMO_USER_CONFIG_DIR !== undefined
+      && resolveUserOmoConfigDirectory(environment) !== resolve(homeDir, ".omo"))) {
+    return { journalResumed: false, migratedFrom: [], reloadRequired: false, results: [], skippedConflictCount: 0 }
+  }
   if (homeDir.length === 0) {
     return {
       error: "Cannot migrate configuration because no home directory is available",

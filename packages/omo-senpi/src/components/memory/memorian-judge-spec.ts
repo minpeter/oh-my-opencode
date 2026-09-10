@@ -1,6 +1,7 @@
 import { loadMemorianPersona } from "@oh-my-opencode/memory-core"
 import type { RecallNudge } from "@oh-my-opencode/memory-core"
 import type { ChildSpec } from "@oh-my-opencode/senpi-task"
+import type { MemorianJudgeChain } from "./memorian-judge-chain"
 import type { MemorianGateLaunchInput } from "./memorian-runner"
 import { createMemorianNudgeTool, MEMORIAN_NUDGE_TOOL_NAME } from "./memorian-nudge-tool"
 import { buildMemorianPrompt } from "./memorian-prompt"
@@ -11,12 +12,19 @@ type JudgeSpecInput = {
   readonly runDir: string
   readonly agentDir: string
   readonly model: ChildSpec["model"]
+  readonly chain: MemorianJudgeChain
   readonly thinkingLevel?: ChildSpec["thinkingLevel"]
   readonly accepted: RecallNudge[]
 }
 
+/**
+ * One same-model retry per rung. A `tool_call` judge has 90s; the engine's default budget spends
+ * ~62s of exponential backoff on the primary alone, so the chain would never be reached in time.
+ */
+const JUDGE_SAME_MODEL_RETRIES = 1
+
 export function buildMemorianJudgeSpec(input: JudgeSpecInput): ChildSpec {
-  const { launch } = input
+  const { launch, chain } = input
   return {
     taskId: `memorian-${input.runId}`,
     cwd: input.runDir,
@@ -24,6 +32,10 @@ export function buildMemorianJudgeSpec(input: JudgeSpecInput): ChildSpec {
     agentDir: input.agentDir,
     modelRegistry: launch.modelRegistry,
     model: input.model,
+    selectedModel: chain.selectedModel,
+    ...(chain.fallbackModels.length === 0
+      ? {}
+      : { fallbackModels: chain.fallbackModels, retry: { maxRetries: JUDGE_SAME_MODEL_RETRIES } }),
     ...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
     toolAllowlist: [MEMORIAN_NUDGE_TOOL_NAME],
     memberScopedTools: [createMemorianNudgeTool({

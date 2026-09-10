@@ -1,6 +1,6 @@
+import { readContextProperty } from "./wiring-context"
 export function resolveParentContextTokens(eventContext: unknown): number | undefined {
-  if (!isRecord(eventContext)) return undefined
-  const getter = eventContext.getContextUsage
+  const getter = readContextProperty(eventContext, "getContextUsage")
   if (typeof getter !== "function") return undefined
   const usage = Reflect.apply(getter, eventContext, [])
   if (!isRecord(usage)) return undefined
@@ -13,8 +13,7 @@ export function resolveParentContextTokens(eventContext: unknown): number | unde
 // actively caching this session's prefix, so a fork launched inside the TTL stands a chance of
 // hitting it. Anything we cannot observe is reported as not cacheable rather than assumed.
 export function resolveParentCacheReusable(eventContext: unknown): boolean {
-  if (!isRecord(eventContext)) return false
-  const manager = eventContext.sessionManager
+  const manager = readContextProperty(eventContext, "sessionManager")
   if (!isRecord(manager)) return false
   const getter = manager.getUsageTotals
   if (typeof getter !== "function") return false
@@ -25,8 +24,7 @@ export function resolveParentCacheReusable(eventContext: unknown): boolean {
 }
 
 export function resolveParentSessionFile(eventContext: unknown): string | undefined {
-  if (!isRecord(eventContext)) return undefined
-  const manager = eventContext.sessionManager
+  const manager = readContextProperty(eventContext, "sessionManager")
   if (!isRecord(manager)) return undefined
   const getter = manager.getSessionFile
   if (typeof getter !== "function") return undefined

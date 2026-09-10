@@ -1,5 +1,6 @@
-import { afterAll, afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
-import { appendFile, cp, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
+import { afterAll, afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test"
+import { createHash } from "node:crypto"
+import { appendFile, cp, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -85,13 +86,16 @@ describe("checkExtensionCurrent", () => {
       expect(text.indexOf("\n// omo:")).toBeGreaterThan(0)
     }
     // and the freshness round-trip still recognizes the artifacts
+    const diagnosticsDir = join(outputs.root, "success-diagnostics")
     const check = await checkExtensionCurrent({
+      diagnosticsDir,
       outputPath: outputs.outputPath,
       memberOutputPath: outputs.memberOutputPath,
       supervisorOutputPath: outputs.supervisorOutputPath,
     })
     // Compare the whole result so a failure names the stale artifact instead of printing "false".
     expect(check).toMatchObject({ ok: true })
+    await expect(stat(diagnosticsDir)).rejects.toMatchObject({ code: "ENOENT" })
   })
 
   test("#given an empty output directory #when extensions are built #then all runtime personas match their sources", async () => {
@@ -134,6 +138,50 @@ describe("checkExtensionCurrent", () => {
 
     // then
     expect(result).toMatchObject({ ok: true })
+  })
+
+  test("#given a stale task artifact #when diagnostics are enabled #then failure retains exact bytes and ordered input digests", async () => {
+    const outputs = await mutableOutputs()
+    const expected = await readFile(outputs.taskOutputPath, "utf8")
+    const current = `${expected}\nexport const diagnosticFixture = true\n`
+    await writeFile(outputs.taskOutputPath, current)
+    const diagnosticsDir = join(outputs.root, "failure-diagnostics")
+
+    const result = await checkExtensionCurrent({ ...outputs, diagnosticsDir })
+
+    expect(result).toEqual({ ok: false, reason: "stale-output", output: outputs.taskOutputPath })
+    const report = JSON.parse(await readFile(join(diagnosticsDir, "comparison.json"), "utf8"))
+    expect(report.reason).toBe("stale-output")
+    expect(report.artifacts.map((artifact) => artifact.name)).toEqual(["omo-task.js"])
+    const artifact = report.artifacts[0]
+    expect(artifact.current.sourceDigest).toBe(artifact.rebuilt.sourceDigest)
+    expect(artifact.current.computedBodyDigest).not.toBe(artifact.rebuilt.computedBodyDigest)
+    expect(artifact.rebuilt.computedBodyDigest).toBe(artifact.rebuilt.declaredBodyDigest)
+    const target = join(diagnosticsDir, "omo-task.js")
+    expect(await readFile(join(target, "current.js"), "utf8")).toBe(current)
+    expect(await readFile(join(target, "rebuilt.js"), "utf8")).toBe(expected)
+    const inputs = JSON.parse(await readFile(join(target, "inputs.json"), "utf8"))
+    const metadata = JSON.parse(await readFile(join(target, "metafile.json"), "utf8"))
+    expect(inputs.map((input) => input.path)).toEqual(Object.keys(metadata.inputs).sort().map(toPortableBuildPath))
+    expect(inputs.length).toBe(artifact.inputCount)
+    for (const input of inputs) {
+      expect(input.sha256).toBe(createHash("sha256").update(await readFile(join(repoRoot, input.path))).digest("hex"))
+    }
+  })
+
+  test("#given an unwritable diagnostic destination #when a bundle is stale #then collection errors cannot hide the stale failure", async () => {
+    const outputs = await mutableOutputs()
+    await appendFile(outputs.taskOutputPath, "\nchanged\n")
+    const diagnosticsDir = join(outputs.root, "not-a-directory")
+    await writeFile(diagnosticsDir, "occupied")
+    const error = spyOn(console, "error").mockImplementation(() => {})
+    try {
+      expect(await checkExtensionCurrent({ ...outputs, diagnosticsDir }))
+        .toEqual({ ok: false, reason: "stale-output", output: outputs.taskOutputPath })
+      expect(error).toHaveBeenCalledTimes(1)
+    } finally {
+      error.mockRestore()
+    }
   })
 
   test("#given a missing supervisor artifact #when checked #then freshness reports that output", async () => {

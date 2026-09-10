@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { dirname, join, posix } from "node:path"
 import { parseJsoncSafe } from "../internal/jsonc-parse"
 import { applyEdits, modify } from "jsonc-parser/lib/esm/main.js"
-import { resolveUserOmoConfigPath } from "../loader"
+import { resolveOmoConfigNamespace, resolveUserOmoConfigPath } from "../loader"
 import {
   DEFAULT_WRITE_FILE_SYSTEM,
   OmoConfigWriteError,
@@ -58,7 +58,8 @@ function resolveWritePath(options: UpdateOmoConfigOptions): string {
     const jsonPath = join(dirname(jsoncPath), "omo.json")
     return fileSystem.existsSync(jsonPath) ? jsonPath : jsoncPath
   }
-  const jsoncPath = join(options.projectDir ?? process.cwd(), ".omo", "omo.jsonc")
+  const namespace = resolveOmoConfigNamespace(options.env)
+  const jsoncPath = join(options.projectDir ?? process.cwd(), namespace, "omo.jsonc")
   if (fileSystem.existsSync(jsoncPath)) return jsoncPath
   const jsonPath = join(dirname(jsoncPath), "omo.json")
   return fileSystem.existsSync(jsonPath) ? jsonPath : jsoncPath

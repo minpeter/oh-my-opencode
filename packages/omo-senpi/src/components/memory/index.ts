@@ -17,6 +17,7 @@ import { shutdownDeadlineAt, type ShutdownReason } from "./shutdown-drain"
 import { resolveMemorySettings } from "./identity-runtime"
 import { memoryModuleSupervisor } from "./supervisor"
 import { createMemoryWiring, type MemoryWiringOptions } from "./wiring"
+import { readContextProperty } from "./wiring-context"
 
 const GLOBAL_DISABLED_FLAG = "omo-senpi-disabled"
 const MEMORY_DISABLED_FLAG = "omo-senpi-memory-disabled"
@@ -185,12 +186,14 @@ function releaseSession(state: SessionState | undefined): void {
 
 function readSessionSurface(value: unknown): SessionSurface {
   if (!isRecord(value)) return { entries: [], id: "unknown-session" }
-  const manager = isRecord(value.sessionManager) ? value.sessionManager : undefined
+  const managerValue = readContextProperty(value, "sessionManager")
+  const manager = isRecord(managerValue) ? managerValue : undefined
   const getSessionId = manager?.getSessionId
   const getEntries = manager?.getEntries
   const id = typeof getSessionId === "function" ? Reflect.apply(getSessionId, manager, []) : "unknown-session"
   const entries = typeof getEntries === "function" ? Reflect.apply(getEntries, manager, []) : []
-  const ui = isSessionUi(value.ui) ? value.ui : undefined
+  const uiValue = readContextProperty(value, "ui")
+  const ui = isSessionUi(uiValue) ? uiValue : undefined
   return {
     entries: Array.isArray(entries) ? entries : [],
     id: typeof id === "string" && id.length > 0 ? id : "unknown-session",
@@ -218,3 +221,6 @@ function isOmoConfigReload(value: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
+
+/** @internal Exposed so the stale-context contract can be asserted directly. */
+export const readSessionSurfaceForTest = readSessionSurface

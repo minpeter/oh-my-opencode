@@ -22,6 +22,12 @@ export {
 export type { AgentInvocationCondition, InvocationGuardVerdict, PlanArtifactReference, SkillInvocationState } from "./invocation-guard"
 export { loadAgents } from "./loader"
 export { mapOmoConfigAgents } from "./omo-config-agents"
+export {
+  isReservedPrimaryAgentName,
+  primaryAgentIdentity,
+  RESERVED_PRIMARY_AGENT_NAMES,
+  SENPI_MAIN_AGENT_NAME,
+} from "./primary-agents"
 export { resolveAgent } from "./resolve-agent"
 export { defineAgent } from "./schema"
 export { registerAgent } from "./registry"
