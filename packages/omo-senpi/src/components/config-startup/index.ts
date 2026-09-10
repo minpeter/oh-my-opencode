@@ -1,7 +1,8 @@
-import { posix, win32 } from "node:path"
+import { posix, resolve, win32 } from "node:path"
 
 import {
   resolveOmoConfigNamespace,
+  resolveUserOmoConfigDirectory,
   runMigrations,
   type MigrationBoundary,
   type MigrationClock,
@@ -64,10 +65,14 @@ function migratedSources(results: readonly MigrationRunResult[]): readonly strin
 
 /** Runs the shared, lock-protected migration engine before Senpi reads its unified configuration. */
 export function runSenpiStartupMigration(options: SenpiStartupMigrationOptions): SenpiStartupMigrationResult {
-  if (resolveOmoConfigNamespace(options.environment ?? process.env) !== ".omo") {
+  const environment = options.environment ?? process.env
+  const homeDir = homeDirectory(options)
+  // Legacy discovery and journal recovery both target the default user directory.
+  if (resolveOmoConfigNamespace(environment) !== ".omo"
+    || (environment.OMO_USER_CONFIG_DIR !== undefined
+      && resolveUserOmoConfigDirectory(environment) !== resolve(homeDir, ".omo"))) {
     return { journalResumed: false, migratedFrom: [], results: [] }
   }
-  const homeDir = homeDirectory(options)
   if (homeDir.length === 0) {
     return {
       error: "Cannot migrate configuration because no home directory is available",

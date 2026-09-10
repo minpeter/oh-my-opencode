@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { loadSenpiOmoConfig } from "../config-resolution"
 import { resolveOmoConfigWatchTargets } from "./paths"
 import { createOmoConfigValidator } from "./validate"
 
@@ -63,6 +64,36 @@ test("#given deleting fomo JSONC exposes an invalid sibling JSON #when validatin
   write(json)
   expect(validator.validate([json])).toEqual({ ok: true })
 })
+
+for (const namespace of [".omo", ".fomo"]) {
+  test(`#given ${namespace} project configs and an explicit rendered user directory #when deleting JSONC exposes malformed JSON #then validation rejects until repaired`, () => {
+    // given
+    const item = fixture()
+    const env = { ...item.env, OMO_CONFIG_NAMESPACE: namespace, OMO_USER_CONFIG_DIR: join(item.home, "rendered") }
+    const options = { cwd: item.cwd, env }
+    const jsonc = join(item.project, namespace, "omo.jsonc")
+    const json = join(item.project, namespace, "omo.json")
+    write(jsonc, '{"task":{"default_concurrency":7}}')
+    write(json, '{"task":')
+    write(join(env.OMO_USER_CONFIG_DIR, "omo.jsonc"))
+    expect(loadSenpiOmoConfig(options).config.task?.default_concurrency).toBe(7)
+    expect(loadSenpiOmoConfig(options).diagnostics).toEqual([])
+    expect(resolveOmoConfigWatchTargets(options).some((target) => target.path === dirname(jsonc))).toBe(true)
+    const validator = createOmoConfigValidator(options)
+
+    // when
+    unlinkSync(jsonc)
+    const loaded = loadSenpiOmoConfig(options)
+    const validation = validator.validate([jsonc])
+
+    // then
+    expect(loaded.diagnostics).toEqual([expect.objectContaining({ kind: "parse", path: json })])
+    expect(validation).toEqual({ ok: false, errors: loaded.diagnostics.map((diagnostic) => diagnostic.message) })
+    expect(validator.validate([join(env.OMO_USER_CONFIG_DIR, "omo.jsonc")]).ok).toBe(false)
+    write(json)
+    expect(validator.validate([json])).toEqual({ ok: true })
+  })
+}
 
 test("#given an invalid namespace #when preparing watch targets or validator #then TypeError is thrown", () => {
   const item = fixture()

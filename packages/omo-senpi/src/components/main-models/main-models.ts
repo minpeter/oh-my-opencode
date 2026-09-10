@@ -35,7 +35,7 @@ function hasModelPolicyContext(value: unknown): value is SenpiMainModelContext {
  */
 function mainModelEntries(agent: OmoAgentDef | undefined): readonly OmoAgentModelEntry[] | undefined {
   if (agent === undefined) return undefined
-  if (agent.models !== undefined && agent.models.length > 0) return agent.models
+  if (agent.models !== undefined) return agent.models.length > 0 ? agent.models : undefined
   if (agent.model === undefined) return undefined
   const reasoning = agent.reasoning ?? agent.reasoningEffort
   return [reasoning === undefined ? agent.model : { model: agent.model, reasoning }]

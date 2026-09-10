@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
 
 import {
+  resolveOmoConfigNamespace,
   resolveUserOmoConfigDirectory,
   type OmoConfigEnv,
 } from "@oh-my-opencode/omo-config-core"
@@ -39,14 +40,14 @@ function isEqualToOrDescendantOf(path: string, parent: string): boolean {
   return pathToChild === "" || (!pathToChild.startsWith("..") && !isAbsolute(pathToChild))
 }
 
-function containingConfigDirectory(path: string, userConfigDirectory: string): string | null {
+function containingConfigDirectory(path: string, userConfigDirectory: string, namespace: string): string | null {
   const resolvedPath = resolve(path)
   const resolvedUserConfigDirectory = resolve(userConfigDirectory)
   if (isEqualToOrDescendantOf(resolvedPath, resolvedUserConfigDirectory)) return resolvedUserConfigDirectory
 
   let currentPath = resolvedPath
   while (true) {
-    if (basename(currentPath) === basename(resolvedUserConfigDirectory)) return currentPath
+    if (basename(currentPath) === namespace) return currentPath
     const parentPath = dirname(currentPath)
     if (parentPath === currentPath) return null
     currentPath = parentPath
@@ -56,15 +57,15 @@ function containingConfigDirectory(path: string, userConfigDirectory: string): s
 function isAttributableDiagnostic(
   diagnostic: SenpiConfigDiagnostic,
   changedPaths: readonly string[],
-  userConfigDirectory: string,
+  configPaths: { readonly userDirectory: string; readonly namespace: string },
 ): boolean {
   if (diagnostic.path === MERGED_OMO_CONFIG_DIAGNOSTIC_PATH || diagnostic.kind === "model_catalog_cycle") return true
 
-  const diagnosticConfigDirectory = containingConfigDirectory(diagnostic.path, userConfigDirectory)
+  const diagnosticConfigDirectory = containingConfigDirectory(diagnostic.path, configPaths.userDirectory, configPaths.namespace)
   return changedPaths.some((changedPath) => {
     if (isEqualToOrDescendantOf(diagnostic.path, changedPath)) return true
     if (diagnosticConfigDirectory === null) return false
-    return containingConfigDirectory(changedPath, userConfigDirectory) === diagnosticConfigDirectory
+    return containingConfigDirectory(changedPath, configPaths.userDirectory, configPaths.namespace) === diagnosticConfigDirectory
   })
 }
 
@@ -82,7 +83,7 @@ export function createOmoConfigValidator(options: CreateOmoConfigValidatorOption
   const env = options.env ?? process.env
   const platform = options.platform ?? process.platform
   const loadConfig = options.loadConfig ?? loadSenpiOmoConfig
-  const userConfigDirectory = resolveUserOmoConfigDirectory(env)
+  const configPaths = { userDirectory: resolveUserOmoConfigDirectory(env), namespace: resolveOmoConfigNamespace(env) }
   let baseline = new Set(loadConfig({ cwd: options.cwd, env, platform }).diagnostics.map(fingerprintDiagnostic))
   const unresolvedRejected = new Set<string>()
 
@@ -102,7 +103,7 @@ export function createOmoConfigValidator(options: CreateOmoConfigValidatorOption
 
       for (const entry of fingerprintedDiagnostics) {
         if (baseline.has(entry.fingerprint)) continue
-        if (!isAttributableDiagnostic(entry.diagnostic, changedPaths, userConfigDirectory)) continue
+        if (!isAttributableDiagnostic(entry.diagnostic, changedPaths, configPaths)) continue
         unresolvedRejected.add(entry.fingerprint)
       }
 
